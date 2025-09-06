@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>CAD Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* iPhone X dimensions simulation */
+        .phone-container {
+            width: 375px;
+            height: 812px;
+            margin: 20px auto;
+            background: #000;
+            border-radius: 40px;
+            padding: 44px 0 34px 0; /* Safe areas */
+            position: relative;
+            box-shadow: 0 0 30px rgba(255,255,255,0.1);
+        }
+
+        .status-bar {
+            display: none; /* Masqué en mode web app */
+        }
+
+        .app-content {
+            height: 734px;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header {
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(20px);
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .import-btn {
+            background: #007AFF;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .import-btn:hover {
+            background: #0056CC;
+        }
+
+        .main-content {
+            height: calc(100% - 60px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .viewer-area {
+            flex: 1;
+            background: #2c2c2c;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .viewer-placeholder {
+            text-align: center;
+            opacity: 0.6;
+        }
+
+        .viewer-placeholder svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .file-info {
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(20px);
+            padding: 12px 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            font-size: 14px;
+        }
+
+        .controls-panel {
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(20px);
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .control-btn {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 12px;
+            padding: 12px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            min-width: 60px;
+        }
+
+        .control-btn:hover, .control-btn.active {
+            background: #007AFF;
+        }
+
+        .control-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .control-btn span {
+            font-size: 10px;
+            font-weight: 500;
+        }
+
+        .import-modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(20px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .import-modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1c1c1c;
+            border-radius: 16px;
+            padding: 24px;
+            width: 280px;
+            text-align: center;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .import-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .import-option {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 12px;
+            padding: 16px;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+        }
+
+        .import-option:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .import-option svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .close-modal {
+            background: #FF3B30;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            color: white;
+            cursor: pointer;
+            margin-top: 16px;
+            font-weight: 500;
+        }
+
+        .sample-model {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 200px;
+            display: none;
+        }
+
+        .sample-model.show {
+            display: block;
+            animation: rotateY 4s linear infinite;
+        }
+
+        @keyframes rotateY {
+            from { transform: translate(-50%, -50%) rotateY(0deg); }
+            to { transform: translate(-50%, -50%) rotateY(360deg); }
+        }
+
+        .measurement-overlay {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            display: none;
+        }
+
+        .measurement-overlay.show {
+            display: block;
+        }
+
+        .home-indicator {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 134px;
+            height: 5px;
+            background: #fff;
+            border-radius: 3px;
+            opacity: 0.3;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-container">
+        <div class="status-bar">
+            <span>9:41</span>
+            <span>📶 📶 📶 100%</span>
+        </div>
+        
+        <div class="app-content">
+            <div class="header">
+                <div class="title">CAD Viewer</div>
+                <button class="import-btn" onclick="showImportModal()">Importer</button>
+            </div>
+            
+            <div class="main-content">
+                <div class="viewer-area" id="viewerArea">
+                    <div class="viewer-placeholder" id="placeholder">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                        </svg>
+                        <div>Sélectionnez un fichier<br>pour commencer</div>
+                    </div>
+                    
+                    <div class="sample-model" id="sampleModel">
+                        <svg viewBox="0 0 200 200" fill="none">
+                            <defs>
+                                <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#007AFF;stop-opacity:1" />
+                                    <stop offset="100%" style="stop-color:#5856D6;stop-opacity:1" />
+                                </linearGradient>
+                            </defs>
+                            <!-- Cube 3D simulé -->
+                            <polygon points="50,50 150,50 170,30 70,30" fill="url(#grad1)" opacity="0.8"/>
+                            <polygon points="150,50 150,150 170,130 170,30" fill="url(#grad1)" opacity="0.6"/>
+                            <polygon points="50,50 50,150 70,170 70,30" fill="url(#grad1)" opacity="0.9"/>
+                            <polygon points="50,150 150,150 170,130 70,170" fill="url(#grad1)" opacity="0.7"/>
+                        </svg>
+                    </div>
+                    
+                    <div class="measurement-overlay" id="measurementOverlay">
+                        <div>📏 Longueur: 125.4 mm</div>
+                        <div>📐 Angle: 45°</div>
+                    </div>
+                </div>
+                
+                <div class="file-info" id="fileInfo" style="display: none;">
+                    <div><strong>piece_moteur.step</strong> • 2.3 MB</div>
+                    <div>Dernière modification: Aujourd'hui à 14:30</div>
+                </div>
+                
+                <div class="controls-panel">
+                    <button class="control-btn" onclick="toggleRotation()">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                        </svg>
+                        <span>Rotation</span>
+                    </button>
+                    
+                    <button class="control-btn" onclick="toggleZoom()">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                            <path d="M12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z"/>
+                        </svg>
+                        <span>Zoom</span>
+                    </button>
+                    
+                    <button class="control-btn" onclick="toggleMeasure()">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
+                        </svg>
+                        <span>Mesure</span>
+                    </button>
+                    
+                    <button class="control-btn" onclick="showFileInfo()">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                        </svg>
+                        <span>Info</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="import-modal" id="importModal">
+            <div class="modal-content">
+                <div class="modal-title">Importer un fichier</div>
+                <div class="import-options">
+                    <button class="import-option" onclick="importFrom('googledrive')">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M6.28 11L4 15h16l-2.28-4H6.28zM7.5 5L10 9h4L16.5 5h-9zm11 6L15 7l-4.5 7.82L12 18l6.5-7z"/>
+                        </svg>
+                        <span>Google Drive</span>
+                    </button>
+                    
+                    <button class="import-option" onclick="importFrom('dropbox')">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M7.71 3.5L1.15 8L7.71 12.5L12 9.17L7.71 3.5zM12 9.17L16.29 12.5L22.85 8L16.29 3.5L12 9.17zM16.29 13.83L12 17.17L7.71 13.83L1.15 17.33L7.71 21.83L12 18.5L16.29 21.83L22.85 17.33L16.29 13.83z"/>
+                        </svg>
+                        <span>Dropbox</span>
+                    </button>
+                </div>
+                <button class="close-modal" onclick="hideImportModal()">Fermer</button>
+            </div>
+        </div>
+        
+        <div class="home-indicator"></div>
+    </div>
+
+    <script>
+        let currentTool = null;
+        let isModelLoaded = false;
+
+        function showImportModal() {
+            document.getElementById('importModal').classList.add('show');
+        }
+
+        function hideImportModal() {
+            document.getElementById('importModal').classList.remove('show');
+        }
+
+        function importFrom(source) {
+            hideImportModal();
+            
+            // Simulation du chargement
+            setTimeout(() => {
+                loadSampleModel();
+                showNotification(`Fichier importé depuis ${source === 'googledrive' ? 'Google Drive' : 'Dropbox'}`);
+            }, 1000);
+        }
+
+        function loadSampleModel() {
+            document.getElementById('placeholder').style.display = 'none';
+            document.getElementById('sampleModel').classList.add('show');
+            document.getElementById('fileInfo').style.display = 'block';
+            isModelLoaded = true;
+        }
+
+        function toggleRotation() {
+            if (!isModelLoaded) return;
+            
+            const btn = event.target.closest('.control-btn');
+            const model = document.getElementById('sampleModel');
+            
+            if (currentTool === 'rotation') {
+                currentTool = null;
+                btn.classList.remove('active');
+                model.style.animation = 'rotateY 4s linear infinite';
+            } else {
+                clearActiveTools();
+                currentTool = 'rotation';
+                btn.classList.add('active');
+                model.style.animation = 'rotateY 2s linear infinite';
+                showNotification('Mode rotation activé');
+            }
+        }
+
+        function toggleZoom() {
+            if (!isModelLoaded) return;
+            
+            const btn = event.target.closest('.control-btn');
+            const model = document.getElementById('sampleModel');
+            
+            if (currentTool === 'zoom') {
+                currentTool = null;
+                btn.classList.remove('active');
+                model.style.transform = 'translate(-50%, -50%) scale(1)';
+            } else {
+                clearActiveTools();
+                currentTool = 'zoom';
+                btn.classList.add('active');
+                model.style.transform = 'translate(-50%, -50%) scale(1.2)';
+                model.style.transition = 'transform 0.3s ease';
+                showNotification('Mode zoom activé');
+            }
+        }
+
+        function toggleMeasure() {
+            if (!isModelLoaded) return;
+            
+            const btn = event.target.closest('.control-btn');
+            const overlay = document.getElementById('measurementOverlay');
+            
+            if (currentTool === 'measure') {
+                currentTool = null;
+                btn.classList.remove('active');
+                overlay.classList.remove('show');
+            } else {
+                clearActiveTools();
+                currentTool = 'measure';
+                btn.classList.add('active');
+                overlay.classList.add('show');
+                showNotification('Mode mesure activé');
+            }
+        }
+
+        function showFileInfo() {
+            if (!isModelLoaded) return;
+            showNotification('Informations du fichier affichées');
+        }
+
+        function clearActiveTools() {
+            document.querySelectorAll('.control-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById('measurementOverlay').classList.remove('show');
+        }
+
+        function showNotification(message) {
+            // Simulation d'une notification iOS
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 80px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0,0,0,0.9);
+                color: white;
+                padding: 12px 20px;
+                border-radius: 25px;
+                font-size: 14px;
+                z-index: 1000;
+                backdrop-filter: blur(20px);
+                animation: slideDown 0.3s ease;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 2000);
+        }
+
+        // Simulation de gestes tactiles
+        let startY = 0;
+        document.addEventListener('touchstart', function(e) {
+            startY = e.touches[0].clientY;
+        });
+
+        document.addEventListener('touchend', function(e) {
+            const endY = e.changedTouches[0].clientY;
+            const diff = startY - endY;
+            
+            if (Math.abs(diff) > 50 && isModelLoaded && currentTool === 'zoom') {
+                const model = document.getElementById('sampleModel');
+                if (diff > 0) {
+                    model.style.transform = 'translate(-50%, -50%) scale(1.5)';
+                } else {
+                    model.style.transform = 'translate(-50%, -50%) scale(0.8)';
+                }
+            }
+        });
+    </script>
+    
+    <style>
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+    </style>
+</body>
+</html>
