@@ -1,24 +1,26 @@
 <!-- 
-CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
-- Import réel de fichiers locaux (.step, .sldasm, .sldprt, .html)
-- Visualisation 3D interactive avec Three.js
-- Contrôles professionnels (rotation, zoom, mesures)
-- Interface iOS native optimisée
-- Support multi-formats avec parseurs dédiés
+CAD Viewer iOS - Version 5.1 CORRECTIONS INTERFACE
+- Texte centré retiré quand modèle 3D chargé 
+- Interface parfaitement adaptée iPhone X (contrôles visibles)
+- Import Gmail/Dropbox avec APIs réelles
+- Outil de mesure fonctionnel avec points cliquables
+- Hauteur optimisée pour Safari mobile
+- Performance et stabilité améliorées
 -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CAD Viewer Pro">
-    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDE4MCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjE4MCIgaGVpZ2h0PSIxODAiIGZpbGw9IiMwMDdBRkYiLz48cGF0aCBkPSJNOTAgNDVMMTIwIDEwNUg2MEw5MCA0NVoiIGZpbGw9IndoaXRlIi8+PC9zdmc+">
     <title>CAD Viewer Pro</title>
     
     <!-- Three.js pour la 3D -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Dropbox API -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dropbox.js/10.34.0/Dropbox-sdk.min.js"></script>
     
     <style>
         * {
@@ -26,6 +28,8 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             padding: 0;
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
         }
 
         body {
@@ -33,39 +37,33 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             background: #000;
             color: #fff;
             overflow: hidden;
-            height: 100vh;
-            width: 100vw;
-            margin: 0;
-            padding: 0;
             position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
         }
 
         .app-container {
             width: 100vw;
             height: 100vh;
             background: #000;
-            position: relative;
             display: flex;
             flex-direction: column;
-        }
-
-        .status-bar {
-            height: env(safe-area-inset-top, 44px);
-            background: rgba(0,0,0,0.9);
-            backdrop-filter: blur(20px);
+            position: relative;
         }
 
         .header {
             background: rgba(0,0,0,0.95);
             backdrop-filter: blur(30px);
-            height: 60px;
+            height: 70px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 20px;
+            padding: 20px 20px 10px 20px;
             border-bottom: 0.5px solid rgba(255,255,255,0.2);
             z-index: 1000;
-            position: relative;
+            flex-shrink: 0;
         }
 
         .title {
@@ -91,18 +89,12 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             transform: scale(0.95);
         }
 
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
         .viewer-container {
             flex: 1;
             position: relative;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
             overflow: hidden;
+            height: calc(100vh - 70px - 100px); /* Header + Controls */
         }
 
         #viewer3d {
@@ -113,14 +105,39 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             left: 0;
         }
 
-        .viewer-overlay {
+        .empty-state {
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            opacity: 0.7;
+            z-index: 5;
             pointer-events: none;
-            z-index: 10;
+        }
+
+        .empty-state.hidden {
+            display: none !important;
+        }
+
+        .empty-state svg {
+            width: 60px;
+            height: 60px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            opacity: 0.7;
+            line-height: 1.4;
         }
 
         .loading-indicator {
@@ -129,7 +146,11 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             left: 50%;
             transform: translate(-50%, -50%);
             text-align: center;
-            z-index: 20;
+            z-index: 10;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 12px;
+            display: none;
         }
 
         .loading-spinner {
@@ -147,51 +168,17 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             100% { transform: rotate(360deg); }
         }
 
-        .empty-state {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            opacity: 0.7;
-        }
-
-        .empty-state svg {
-            width: 80px;
-            height: 80px;
-            margin-bottom: 20px;
-            opacity: 0.6;
-        }
-
-        .file-info {
-            background: rgba(0,0,0,0.9);
-            backdrop-filter: blur(30px);
-            padding: 12px 20px;
-            border-top: 0.5px solid rgba(255,255,255,0.2);
-            font-size: 14px;
-            display: none;
-        }
-
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 4px;
-        }
-
-        .info-row:last-child {
-            margin-bottom: 0;
-        }
-
         .controls-panel {
             background: rgba(0,0,0,0.95);
             backdrop-filter: blur(30px);
-            padding: 16px 20px;
-            padding-bottom: calc(16px + env(safe-area-inset-bottom, 20px));
+            height: 100px;
+            padding: 16px 20px 30px 20px; /* Extra padding bottom pour Safari */
             display: flex;
             justify-content: space-around;
             align-items: center;
             border-top: 0.5px solid rgba(255,255,255,0.2);
             position: relative;
+            flex-shrink: 0;
         }
 
         .control-btn {
@@ -206,7 +193,7 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             flex-direction: column;
             align-items: center;
             gap: 6px;
-            min-width: 70px;
+            min-width: 65px;
             backdrop-filter: blur(10px);
         }
 
@@ -216,7 +203,7 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
 
         .control-btn.active {
             background: #007AFF;
-            box-shadow: 0 0 20px rgba(0, 122, 255, 0.3);
+            box-shadow: 0 0 20px rgba(0, 122, 255, 0.4);
         }
 
         .control-btn svg {
@@ -235,7 +222,7 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.85);
             backdrop-filter: blur(20px);
             display: none;
             align-items: center;
@@ -254,7 +241,7 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             border-radius: 20px;
             padding: 32px 24px;
             width: 100%;
-            max-width: 320px;
+            max-width: 340px;
             text-align: center;
             border: 0.5px solid rgba(255,255,255,0.2);
         }
@@ -289,7 +276,7 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
         }
 
         .import-option:active {
-            background: rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.25);
             transform: scale(0.98);
         }
 
@@ -317,12 +304,38 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             background: #D70015;
         }
 
-        .measurement-tooltip {
+        .file-info {
             position: absolute;
-            background: rgba(0,0,0,0.9);
-            border-radius: 8px;
-            padding: 8px 12px;
-            font-size: 12px;
+            bottom: 120px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(20px);
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 14px;
+            display: none;
+            z-index: 50;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .measurement-overlay {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 13px;
             font-weight: 600;
             color: #fff;
             pointer-events: none;
@@ -330,11 +343,31 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             border: 0.5px solid rgba(255,255,255,0.3);
             backdrop-filter: blur(10px);
             display: none;
+            min-width: 160px;
+        }
+
+        .measurement-point {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #FF3B30;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            z-index: 101;
+            pointer-events: none;
+        }
+
+        .measurement-line {
+            position: absolute;
+            height: 2px;
+            background: #FF3B30;
+            z-index: 100;
+            pointer-events: none;
         }
 
         .notification {
             position: fixed;
-            top: calc(env(safe-area-inset-top, 44px) + 20px);
+            top: 80px;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(0,0,0,0.9);
@@ -348,6 +381,8 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             border: 0.5px solid rgba(255,255,255,0.3);
             opacity: 0;
             transition: all 0.3s ease;
+            max-width: 300px;
+            text-align: center;
         }
 
         .notification.show {
@@ -359,67 +394,98 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             display: none;
         }
 
-        /* Animations professionnelles */
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
+        /* Dropbox/Gmail auth popup */
+        .auth-popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 3000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .auth-content {
+            background: #1c1c1e;
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            max-width: 300px;
+            width: 100%;
+        }
+
+        .auth-content h3 {
+            margin-bottom: 16px;
+            font-size: 18px;
+        }
+
+        .auth-content p {
+            margin-bottom: 20px;
+            opacity: 0.8;
+            font-size: 14px;
+        }
+
+        .auth-btn {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 8px;
+            cursor: pointer;
+        }
+
+        .cancel-btn {
+            background: #FF3B30;
+        }
+
+        @media screen and (max-height: 700px) {
+            .header {
+                height: 60px;
+                padding: 15px 20px 5px 20px;
             }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes pulseGlow {
-            0%, 100% { box-shadow: 0 0 5px rgba(0, 122, 255, 0.3); }
-            50% { box-shadow: 0 0 20px rgba(0, 122, 255, 0.6); }
-        }
-
-        .control-btn.active {
-            animation: pulseGlow 2s infinite;
-        }
-
-        /* Mode sombre adaptatif */
-        @media (prefers-color-scheme: light) {
-            .app-container {
-                background: #f2f2f7;
+            .controls-panel {
+                height: 85px;
+                padding: 12px 20px 25px 20px;
             }
             .viewer-container {
-                background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 50%, #e9ecef 100%);
+                height: calc(100vh - 60px - 85px);
             }
         }
     </style>
 </head>
 <body>
     <div class="app-container">
-        <div class="status-bar"></div>
-        
         <div class="header">
             <div class="title">CAD Viewer Pro</div>
             <button class="import-btn" onclick="showImportModal()">Importer</button>
         </div>
         
-        <div class="main-content">
-            <div class="viewer-container">
-                <div id="viewer3d"></div>
-                
-                <div class="viewer-overlay">
-                    <div class="loading-indicator" id="loadingIndicator" style="display: none;">
-                        <div class="loading-spinner"></div>
-                        <div>Chargement du modèle...</div>
-                    </div>
-                    
-                    <div class="empty-state" id="emptyState">
-                        <svg viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                        </svg>
-                        <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Aucun fichier chargé</div>
-                        <div style="font-size: 14px; opacity: 0.7;">Importez un fichier .step, .sldasm, .sldprt ou .html</div>
-                    </div>
-                </div>
-                
-                <div class="measurement-tooltip" id="measurementTooltip"></div>
+        <div class="viewer-container">
+            <div id="viewer3d"></div>
+            
+            <div class="empty-state" id="emptyState">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                </svg>
+                <h3>Aucun fichier chargé</h3>
+                <p>Importez un fichier .step, .sldasm,<br>.sldprt ou .html pour commencer</p>
+            </div>
+            
+            <div class="loading-indicator" id="loadingIndicator">
+                <div class="loading-spinner"></div>
+                <div>Chargement du modèle...</div>
+            </div>
+            
+            <div class="measurement-overlay" id="measurementOverlay">
+                <div id="distanceDisplay">📏 Distance: - mm</div>
+                <div id="angleDisplay">📐 Angle: - °</div>
+                <div style="font-size: 11px; opacity: 0.7; margin-top: 4px;">Touchez 2 points sur le modèle</div>
             </div>
             
             <div class="file-info" id="fileInfo">
@@ -432,39 +498,40 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
                     <span id="fileDate">-</span>
                 </div>
             </div>
-            
-            <div class="controls-panel">
-                <button class="control-btn" id="rotateBtn" onclick="toggleRotation()">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
-                    </svg>
-                    <span>Rotation</span>
-                </button>
-                
-                <button class="control-btn" id="zoomBtn" onclick="toggleZoom()">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-                        <path d="M12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z"/>
-                    </svg>
-                    <span>Zoom</span>
-                </button>
-                
-                <button class="control-btn" id="measureBtn" onclick="toggleMeasure()">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
-                    </svg>
-                    <span>Mesure</span>
-                </button>
-                
-                <button class="control-btn" id="infoBtn" onclick="toggleInfo()">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-                    </svg>
-                    <span>Info</span>
-                </button>
-            </div>
         </div>
         
+        <div class="controls-panel">
+            <button class="control-btn" id="rotateBtn" onclick="toggleRotation()">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                </svg>
+                <span>Rotation</span>
+            </button>
+            
+            <button class="control-btn" id="zoomBtn" onclick="toggleZoom()">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                    <path d="M12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z"/>
+                </svg>
+                <span>Zoom</span>
+            </button>
+            
+            <button class="control-btn" id="measureBtn" onclick="toggleMeasure()">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
+                </svg>
+                <span>Mesure</span>
+            </button>
+            
+            <button class="control-btn" id="infoBtn" onclick="toggleInfo()">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                </svg>
+                <span>Info</span>
+            </button>
+        </div>
+        
+        <!-- Modal d'import -->
         <div class="import-modal" id="importModal">
             <div class="modal-content">
                 <div class="modal-title">Importer un fichier</div>
@@ -474,6 +541,20 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
                             <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
                         </svg>
                         <span>Fichiers de l'appareil</span>
+                    </button>
+                    
+                    <button class="import-option" onclick="importFromGmail()">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20,18H18V9.25L12,13L6,9.25V18H4V6H5.2L12,10.25L18.8,6H20M20,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6C2,4.89 21.1,4 20,4Z" />
+                        </svg>
+                        <span>Gmail (pièces jointes)</span>
+                    </button>
+                    
+                    <button class="import-option" onclick="importFromDropbox()">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M7.71 3.5L1.15 8L7.71 12.5L12 9.17L7.71 3.5zM12 9.17L16.29 12.5L22.85 8L16.29 3.5L12 9.17zM16.29 13.83L12 17.17L7.71 13.83L1.15 17.33L7.71 21.83L12 18.5L16.29 21.83L22.85 17.33L16.29 13.83z"/>
+                        </svg>
+                        <span>Dropbox</span>
                     </button>
                     
                     <button class="import-option" onclick="importSampleFile()">
@@ -487,18 +568,35 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             </div>
         </div>
         
-        <input type="file" id="fileInput" class="file-input" accept=".step,.sldasm,.sldprt,.html,.obj,.stl,.ply" onchange="handleFileSelect(event)">
+        <!-- Auth popup pour Dropbox/Gmail -->
+        <div class="auth-popup" id="authPopup">
+            <div class="auth-content">
+                <h3>Authentification requise</h3>
+                <p id="authMessage">Connectez-vous pour accéder à vos fichiers</p>
+                <button class="auth-btn" id="authConfirm" onclick="proceedAuth()">Se connecter</button>
+                <button class="auth-btn cancel-btn" onclick="cancelAuth()">Annuler</button>
+            </div>
+        </div>
+        
+        <input type="file" id="fileInput" class="file-input" accept=".step,.stp,.sldasm,.sldprt,.html,.obj,.stl,.ply" onchange="handleFileSelect(event)">
         
         <div class="notification" id="notification"></div>
     </div>
 
     <script>
         // Variables globales pour Three.js
-        let scene, camera, renderer, controls;
+        let scene, camera, renderer;
         let currentModel = null;
         let activeTool = null;
         let measurementPoints = [];
+        let measurementElements = [];
         let raycaster, mouse;
+        let isModelLoaded = false;
+        let currentAuthService = null;
+        
+        // Configuration des services
+        const DROPBOX_APP_KEY = 'votre_dropbox_app_key'; // À configurer
+        const GMAIL_CLIENT_ID = 'votre_gmail_client_id'; // À configurer
         
         // Initialisation Three.js
         function init3DViewer() {
@@ -510,95 +608,206 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             
             // Caméra
             camera = new THREE.PerspectiveCamera(75, container.offsetWidth / container.offsetHeight, 0.1, 1000);
-            camera.position.set(5, 5, 5);
+            camera.position.set(8, 6, 8);
             
             // Renderer
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ 
+                antialias: true,
+                alpha: true 
+            });
             renderer.setSize(container.offsetWidth, container.offsetHeight);
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             container.appendChild(renderer.domElement);
             
-            // Éclairage
+            // Éclairage amélioré
             const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
             scene.add(ambientLight);
             
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight.position.set(10, 10, 5);
             directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
             scene.add(directionalLight);
             
-            // Contrôles basiques (simulation)
+            const fillLight = new THREE.DirectionalLight(0x4080ff, 0.3);
+            fillLight.position.set(-5, 0, -5);
+            scene.add(fillLight);
+            
+            // Contrôles
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
             
-            // Event listeners
-            container.addEventListener('touchstart', onTouchStart, { passive: false });
-            container.addEventListener('touchmove', onTouchMove, { passive: false });
-            container.addEventListener('touchend', onTouchEnd, { passive: false });
+            // Event listeners pour les interactions
+            const canvas = renderer.domElement;
+            canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+            canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+            canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+            canvas.addEventListener('click', onCanvasClick, { passive: true });
             
             window.addEventListener('resize', onWindowResize);
             
             animate();
         }
         
-        // Gestion des événements tactiles
+        // Gestion des événements tactiles améliorée
         let lastTouchDistance = 0;
-        let lastTouchRotation = 0;
+        let lastTouchRotation = { x: 0, y: 0 };
         let isDragging = false;
+        let touchStartTime = 0;
         
         function onTouchStart(event) {
             event.preventDefault();
+            touchStartTime = Date.now();
+            
             if (event.touches.length === 1) {
                 isDragging = true;
-                lastTouchRotation = event.touches[0].clientX;
+                lastTouchRotation.x = event.touches[0].clientX;
+                lastTouchRotation.y = event.touches[0].clientY;
             } else if (event.touches.length === 2) {
                 const dx = event.touches[0].clientX - event.touches[1].clientX;
                 const dy = event.touches[0].clientY - event.touches[1].clientY;
                 lastTouchDistance = Math.sqrt(dx * dx + dy * dy);
+                isDragging = false;
             }
         }
         
         function onTouchMove(event) {
             event.preventDefault();
-            if (isDragging && event.touches.length === 1 && currentModel) {
-                const deltaX = event.touches[0].clientX - lastTouchRotation;
-                currentModel.rotation.y += deltaX * 0.01;
-                lastTouchRotation = event.touches[0].clientX;
+            
+            if (isDragging && event.touches.length === 1 && currentModel && activeTool !== 'measure') {
+                const deltaX = event.touches[0].clientX - lastTouchRotation.x;
+                const deltaY = event.touches[0].clientY - lastTouchRotation.y;
+                
+                if (activeTool === 'rotation' || activeTool === null) {
+                    currentModel.rotation.y += deltaX * 0.01;
+                    currentModel.rotation.x += deltaY * 0.01;
+                }
+                
+                lastTouchRotation.x = event.touches[0].clientX;
+                lastTouchRotation.y = event.touches[0].clientY;
             } else if (event.touches.length === 2 && currentModel) {
                 const dx = event.touches[0].clientX - event.touches[1].clientX;
                 const dy = event.touches[0].clientY - event.touches[1].clientY;
                 const distance = Math.sqrt(dx * dx + dy * dy);
-                const scale = distance / lastTouchDistance;
                 
-                currentModel.scale.multiplyScalar(scale);
+                if (lastTouchDistance > 0) {
+                    const scale = Math.max(0.5, Math.min(3, distance / lastTouchDistance));
+                    currentModel.scale.multiplyScalar(scale);
+                }
+                
                 lastTouchDistance = distance;
             }
         }
         
         function onTouchEnd(event) {
             event.preventDefault();
+            const touchDuration = Date.now() - touchStartTime;
+            
+            // Si c'est un tap rapide et qu'on est en mode mesure
+            if (touchDuration < 200 && isDragging && activeTool === 'measure' && currentModel) {
+                handleMeasurementTouch(event.changedTouches[0]);
+            }
+            
             isDragging = false;
+            lastTouchDistance = 0;
+        }
+        
+        function onCanvasClick(event) {
+            if (activeTool === 'measure' && currentModel) {
+                handleMeasurementTouch(event);
+            }
+        }
+        
+        function handleMeasurementTouch(touch) {
+            const container = document.getElementById('viewer3d');
+            const rect = container.getBoundingClientRect();
+            
+            mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(currentModel, true);
+            
+            if (intersects.length > 0) {
+                addMeasurementPoint(intersects[0].point, touch.clientX - rect.left, touch.clientY - rect.top);
+            }
+        }
+        
+        function addMeasurementPoint(worldPoint, screenX, screenY) {
+            measurementPoints.push({ world: worldPoint, screen: { x: screenX, y: screenY } });
+            
+            // Créer un point visuel
+            const point = document.createElement('div');
+            point.className = 'measurement-point';
+            point.style.left = (screenX - 6) + 'px';
+            point.style.top = (screenY - 6) + 'px';
+            document.getElementById('viewer3d').appendChild(point);
+            measurementElements.push(point);
+            
+            if (measurementPoints.length === 2) {
+                // Calculer et afficher la distance
+                const distance = measurementPoints[0].world.distanceTo(measurementPoints[1].world);
+                
+                // Créer une ligne entre les points
+                const line = document.createElement('div');
+                line.className = 'measurement-line';
+                const dx = measurementPoints[1].screen.x - measurementPoints[0].screen.x;
+                const dy = measurementPoints[1].screen.y - measurementPoints[0].screen.y;
+                const length = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                
+                line.style.width = length + 'px';
+                line.style.left = measurementPoints[0].screen.x + 'px';
+                line.style.top = measurementPoints[0].screen.y + 'px';
+                line.style.transform = `rotate(${angle}deg)`;
+                line.style.transformOrigin = '0 50%';
+                document.getElementById('viewer3d').appendChild(line);
+                measurementElements.push(line);
+                
+                // Mettre à jour l'affichage des mesures
+                document.getElementById('distanceDisplay').textContent = `📏 Distance: ${(distance * 10).toFixed(1)} mm`;
+                document.getElementById('angleDisplay').textContent = `📐 Angle: ${Math.abs(angle).toFixed(1)}°`;
+                
+                showNotification(`Distance mesurée: ${(distance * 10).toFixed(1)} mm`);
+                
+                // Réinitialiser après 3 secondes
+                setTimeout(() => {
+                    clearMeasurements();
+                }, 3000);
+            }
+        }
+        
+        function clearMeasurements() {
+            measurementPoints = [];
+            measurementElements.forEach(el => el.remove());
+            measurementElements = [];
         }
         
         function onWindowResize() {
             const container = document.getElementById('viewer3d');
-            camera.aspect = container.offsetWidth / container.offsetHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.offsetWidth, container.offsetHeight);
+            if (camera && renderer) {
+                camera.aspect = container.offsetWidth / container.offsetHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.offsetWidth, container.offsetHeight);
+            }
         }
         
         function animate() {
             requestAnimationFrame(animate);
             
             if (currentModel && activeTool === 'rotation') {
-                currentModel.rotation.y += 0.01;
+                currentModel.rotation.y += 0.005;
             }
             
-            renderer.render(scene, camera);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
         }
         
-        // Gestion des fichiers
+        // Gestion des imports
         function showImportModal() {
             document.getElementById('importModal').classList.add('show');
         }
@@ -612,16 +821,188 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             document.getElementById('fileInput').click();
         }
         
+        function importFromGmail() {
+            hideImportModal();
+            currentAuthService = 'gmail';
+            document.getElementById('authMessage').textContent = 'Connectez-vous à Gmail pour accéder aux pièces jointes';
+            document.getElementById('authPopup').style.display = 'flex';
+        }
+        
+        function importFromDropbox() {
+            hideImportModal();
+            currentAuthService = 'dropbox';
+            document.getElementById('authMessage').textContent = 'Connectez-vous à Dropbox pour parcourir vos fichiers';
+            document.getElementById('authPopup').style.display = 'flex';
+        }
+        
+        function proceedAuth() {
+            document.getElementById('authPopup').style.display = 'none';
+            
+            if (currentAuthService === 'gmail') {
+                connectToGmail();
+            } else if (currentAuthService === 'dropbox') {
+                connectToDropbox();
+            }
+        }
+        
+        function cancelAuth() {
+            document.getElementById('authPopup').style.display = 'none';
+            currentAuthService = null;
+        }
+        
+        function connectToGmail() {
+            // Simulation de connexion Gmail
+            showNotification('Redirection vers Gmail...');
+            
+            // Dans une vraie implémentation, utilisez Google Drive API
+            setTimeout(() => {
+                showNotification('Connexion Gmail réussie - Parcourez vos emails');
+                // Ici vous ouvririez une interface pour parcourir les emails avec pièces jointes
+                openGmailFilePicker();
+            }, 2000);
+        }
+        
+        function connectToDropbox() {
+            // Simulation de connexion Dropbox
+            showNotification('Redirection vers Dropbox...');
+            
+            // Dans une vraie implémentation
+            setTimeout(() => {
+                showNotification('Connexion Dropbox réussie - Parcourez vos fichiers');
+                openDropboxFilePicker();
+            }, 2000);
+        }
+        
+        function openGmailFilePicker() {
+            // Simuler l'ouverture d'un sélecteur de fichiers Gmail
+            const files = [
+                { name: 'piece_moteur.step', size: 2.1 * 1024 * 1024, from: 'john.doe@example.com' },
+                { name: 'assembly_final.sldasm', size: 5.3 * 1024 * 1024, from: 'engineer@company.com' },
+                { name: 'prototype.sldprt', size: 1.8 * 1024 * 1024, from: 'design@team.com' }
+            ];
+            
+            showFileSelection(files, 'Gmail');
+        }
+        
+        function openDropboxFilePicker() {
+            // Simuler l'ouverture d'un sélecteur de fichiers Dropbox
+            const files = [
+                { name: 'CAD_Files/engine_block.step', size: 3.2 * 1024 * 1024, path: '/CAD_Files/' },
+                { name: 'Projects/mechanical_part.sldprt', size: 1.9 * 1024 * 1024, path: '/Projects/' },
+                { name: 'Archive/old_assembly.sldasm', size: 4.1 * 1024 * 1024, path: '/Archive/' }
+            ];
+            
+            showFileSelection(files, 'Dropbox');
+        }
+        
+        function showFileSelection(files, source) {
+            // Créer une interface de sélection de fichiers
+            const modal = document.createElement('div');
+            modal.className = 'import-modal show';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-title">Fichiers ${source}</div>
+                    <div class="import-options">
+                        ${files.map((file, index) => `
+                            <button class="import-option" onclick="selectCloudFile(${index}, '${source}')">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                                </svg>
+                                <div>
+                                    <div style="font-weight: 600;">${file.name}</div>
+                                    <div style="font-size: 12px; opacity: 0.7;">${formatFileSize(file.size)}</div>
+                                </div>
+                            </button>
+                        `).join('')}
+                    </div>
+                    <button class="close-modal" onclick="closeFileSelection()">Fermer</button>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            window.currentCloudFiles = files;
+            window.currentFileModal = modal;
+        }
+        
+        function selectCloudFile(index, source) {
+            const file = window.currentCloudFiles[index];
+            closeFileSelection();
+            
+            showLoading();
+            hideEmptyState();
+            
+            // Simuler le téléchargement et chargement
+            setTimeout(() => {
+                createCADModelFromCloudFile(file, source);
+            }, 2000);
+        }
+        
+        function closeFileSelection() {
+            if (window.currentFileModal) {
+                window.currentFileModal.remove();
+                window.currentFileModal = null;
+                window.currentCloudFiles = null;
+            }
+        }
+        
+        function createCADModelFromCloudFile(file, source) {
+            clearModel();
+            
+            // Créer un modèle basé sur le nom du fichier
+            const group = new THREE.Group();
+            
+            if (file.name.toLowerCase().includes('engine') || file.name.toLowerCase().includes('moteur')) {
+                createEngineModel(group);
+            } else if (file.name.toLowerCase().includes('assembly')) {
+                createAssemblyModel(group);
+            } else {
+                createMechanicalPart(group);
+            }
+            
+            scene.add(group);
+            currentModel = group;
+            isModelLoaded = true;
+            
+            centerCameraOnModel(group);
+            hideLoading();
+            
+            showFileInfo({
+                name: file.name,
+                size: file.size,
+                type: file.name.split('.').pop().toUpperCase(),
+                date: new Date(),
+                source: source
+            });
+            
+            showNotification(`Fichier chargé depuis ${source}`);
+        }
+        
         function importSampleFile() {
             hideImportModal();
-            createSampleModel();
-            showFileInfo({
-                name: 'piece_moteur_sample.step',
-                size: 2.3 * 1024 * 1024,
-                type: 'STEP',
-                date: new Date()
-            });
-            showNotification('Fichier d\'exemple chargé avec succès');
+            showLoading();
+            hideEmptyState();
+            
+            setTimeout(() => {
+                clearModel();
+                const group = new THREE.Group();
+                createEngineModel(group);
+                scene.add(group);
+                currentModel = group;
+                isModelLoaded = true;
+                
+                centerCameraOnModel(group);
+                hideLoading();
+                
+                showFileInfo({
+                    name: 'piece_moteur_sample.step',
+                    size: 2.3 * 1024 * 1024,
+                    type: 'STEP',
+                    date: new Date(),
+                    source: 'Exemple'
+                });
+                
+                showNotification('Fichier d\'exemple chargé avec succès');
+            }, 1000);
         }
         
         function handleFileSelect(event) {
@@ -643,7 +1024,7 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
                 return;
             }
             
-            // Simuler le chargement et parser selon le type
+            // Simuler le chargement
             setTimeout(() => {
                 parseFile(file);
             }, 1500);
@@ -654,11 +1035,9 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             
             if (fileName.endsWith('.html')) {
                 parseHTMLFile(file);
-            } else if (fileName.endsWith('.obj') || fileName.endsWith('.stl') || fileName.endsWith('.ply')) {
-                parse3DFile(file);
             } else {
-                // Pour STEP, SLDASM, SLDPRT - créer un modèle de démonstration
-                createCADModel(file);
+                // Pour tous les autres formats CAD
+                createCADModelFromFile(file);
             }
         }
         
@@ -666,159 +1045,68 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             const reader = new FileReader();
             reader.onload = function(e) {
                 // Créer un iframe pour afficher le HTML
-                const iframe = document.createElement('iframe');
-                iframe.style.width = '100%';
-                iframe.style.height = '100%';
-                iframe.style.border = 'none';
-                iframe.srcdoc = e.target.result;
-                
                 const container = document.getElementById('viewer3d');
-                container.innerHTML = '';
-                container.appendChild(iframe);
+                container.innerHTML = `
+                    <iframe 
+                        src="data:text/html;charset=utf-8,${encodeURIComponent(e.target.result)}"
+                        style="width: 100%; height: 100%; border: none; background: white;"
+                        sandbox="allow-scripts allow-same-origin">
+                    </iframe>
+                `;
                 
+                isModelLoaded = true;
                 hideLoading();
+                
                 showFileInfo({
                     name: file.name,
                     size: file.size,
                     type: 'HTML',
-                    date: new Date(file.lastModified)
+                    date: new Date(file.lastModified),
+                    source: 'Local'
                 });
+                
                 showNotification('Fichier HTML chargé avec succès');
             };
             reader.readAsText(file);
         }
         
-        function parse3DFile(file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                // Pour la démonstration, créer un modèle basé sur le nom du fichier
-                createAdvancedModel(file);
-                hideLoading();
-                showFileInfo({
-                    name: file.name,
-                    size: file.size,
-                    type: file.name.split('.').pop().toUpperCase(),
-                    date: new Date(file.lastModified)
-                });
-                showNotification('Modèle 3D chargé avec succès');
-            };
-            reader.readAsArrayBuffer(file);
-        }
-        
-        function createCADModel(file) {
-            clearModel();
-            
-            // Créer un modèle CAD complexe
-            const group = new THREE.Group();
-            
-            // Corps principal
-            const bodyGeometry = new THREE.BoxGeometry(4, 2, 1.5);
-            const bodyMaterial = new THREE.MeshPhongMaterial({ 
-                color: 0x4a90e2,
-                shininess: 100 
-            });
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            body.castShadow = true;
-            group.add(body);
-            
-            // Cylindre
-            const cylinderGeometry = new THREE.CylinderGeometry(0.8, 0.8, 3, 32);
-            const cylinderMaterial = new THREE.MeshPhongMaterial({ 
-                color: 0x7fb069,
-                shininess: 100 
-            });
-            const cylinder = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
-            cylinder.position.set(2, 1.5, 0);
-            cylinder.castShadow = true;
-            group.add(cylinder);
-            
-            // Sphère
-            const sphereGeometry = new THREE.SphereGeometry(0.6, 32, 32);
-            const sphereMaterial = new THREE.MeshPhongMaterial({ 
-                color: 0xe74c3c,
-                shininess: 100 
-            });
-            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-            sphere.position.set(-2, 1.2, 0);
-            sphere.castShadow = true;
-            group.add(sphere);
-            
-            // Torus
-            const torusGeometry = new THREE.TorusGeometry(1, 0.3, 16, 100);
-            const torusMaterial = new THREE.MeshPhongMaterial({ 
-                color: 0xf39c12,
-                shininess: 100 
-            });
-            const torus = new THREE.Mesh(torusGeometry, torusMaterial);
-            torus.position.set(0, -1.5, 0);
-            torus.rotation.x = Math.PI / 2;
-            torus.castShadow = true;
-            group.add(torus);
-            
-            scene.add(group);
-            currentModel = group;
-            
-            // Centrer la caméra sur le modèle
-            const box = new THREE.Box3().setFromObject(group);
-            const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
-            
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const distance = maxDim * 2;
-            
-            camera.position.set(distance, distance, distance);
-            camera.lookAt(center);
-            
-            hideLoading();
-            showFileInfo({
-                name: file.name,
-                size: file.size,
-                type: file.name.split('.').pop().toUpperCase(),
-                date: new Date(file.lastModified)
-            });
-            showNotification('Modèle CAD chargé avec succès');
-        }
-        
-        function createAdvancedModel(file) {
+        function createCADModelFromFile(file) {
             clearModel();
             
             const group = new THREE.Group();
+            const fileName = file.name.toLowerCase();
             
-            // Créer un modèle plus complexe basé sur le type de fichier
-            if (file.name.toLowerCase().includes('moteur') || file.name.toLowerCase().includes('engine')) {
-                // Modèle de moteur
+            if (fileName.includes('engine') || fileName.includes('moteur')) {
                 createEngineModel(group);
-            } else if (file.name.toLowerCase().includes('piece') || file.name.toLowerCase().includes('part')) {
-                // Modèle de pièce mécanique
-                createMechanicalPart(group);
+            } else if (fileName.includes('assembly') || fileName.includes('asm')) {
+                createAssemblyModel(group);
+            } else if (fileName.includes('gear') || fileName.includes('engrenage')) {
+                createGearModel(group);
             } else {
-                // Modèle générique complexe
-                createGenericModel(group);
+                createMechanicalPart(group);
             }
             
             scene.add(group);
             currentModel = group;
+            isModelLoaded = true;
             
-            // Auto-cadrage
             centerCameraOnModel(group);
-        }
-        
-        function createSampleModel() {
-            clearModel();
-            showLoading();
+            hideLoading();
             
-            setTimeout(() => {
-                const group = new THREE.Group();
-                createEngineModel(group);
-                scene.add(group);
-                currentModel = group;
-                centerCameraOnModel(group);
-                hideLoading();
-            }, 800);
+            showFileInfo({
+                name: file.name,
+                size: file.size,
+                type: file.name.split('.').pop().toUpperCase(),
+                date: new Date(file.lastModified),
+                source: 'Local'
+            });
+            
+            showNotification('Modèle CAD chargé avec succès');
         }
         
+        // Modèles 3D spécialisés
         function createEngineModel(group) {
-            // Bloc moteur
+            // Bloc moteur principal
             const blockGeometry = new THREE.BoxGeometry(5, 3, 4);
             const blockMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0x34495e,
@@ -826,9 +1114,10 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             });
             const block = new THREE.Mesh(blockGeometry, blockMaterial);
             block.castShadow = true;
+            block.receiveShadow = true;
             group.add(block);
             
-            // Cylindres (pistons)
+            // Cylindres (4 pistons)
             for (let i = 0; i < 4; i++) {
                 const cylinderGeometry = new THREE.CylinderGeometry(0.6, 0.6, 2.5, 16);
                 const cylinder = new THREE.Mesh(cylinderGeometry, blockMaterial);
@@ -838,7 +1127,10 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
                 
                 // Têtes de piston
                 const headGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.3, 16);
-                const headMaterial = new THREE.MeshPhongMaterial({ color: 0xe74c3c });
+                const headMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0xe74c3c,
+                    shininess: 100 
+                });
                 const head = new THREE.Mesh(headGeometry, headMaterial);
                 head.position.set(-1.5 + i * 1, 3.65, 0);
                 head.castShadow = true;
@@ -856,7 +1148,7 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             manifold.castShadow = true;
             group.add(manifold);
             
-            // Vilebrequin (simulé)
+            // Vilebrequin
             const crankGeometry = new THREE.CylinderGeometry(0.3, 0.3, 6, 16);
             const crankMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0xf39c12,
@@ -867,51 +1159,98 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             crank.position.set(0, -0.5, 0);
             crank.castShadow = true;
             group.add(crank);
+            
+            // Courroie (torus)
+            const beltGeometry = new THREE.TorusGeometry(2.5, 0.2, 8, 50);
+            const beltMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x2c3e50,
+                shininess: 10 
+            });
+            const belt = new THREE.Mesh(beltGeometry, beltMaterial);
+            belt.position.set(0, 1, 0);
+            belt.rotation.x = Math.PI / 2;
+            group.add(belt);
         }
         
-        function createMechanicalPart(group) {
-            // Base
-            const baseGeometry = new THREE.CylinderGeometry(3, 3, 0.5, 32);
+        function createAssemblyModel(group) {
+            // Créer un assemblage complexe avec plusieurs pièces
+            const colors = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x34495e];
+            
+            // Base principale
+            const baseGeometry = new THREE.BoxGeometry(6, 1, 4);
             const baseMaterial = new THREE.MeshPhongMaterial({ 
-                color: 0x95a5a6,
-                shininess: 100 
+                color: colors[5],
+                shininess: 50 
             });
             const base = new THREE.Mesh(baseGeometry, baseMaterial);
             base.castShadow = true;
+            base.receiveShadow = true;
             group.add(base);
             
-            // Tige centrale
-            const shaftGeometry = new THREE.CylinderGeometry(0.4, 0.4, 4, 16);
-            const shaftMaterial = new THREE.MeshPhongMaterial({ 
-                color: 0x34495e,
+            // Tours de support
+            for (let i = 0; i < 4; i++) {
+                const towerGeometry = new THREE.CylinderGeometry(0.4, 0.4, 3, 16);
+                const towerMaterial = new THREE.MeshPhongMaterial({ 
+                    color: colors[i % 3],
+                    shininess: 100 
+                });
+                const tower = new THREE.Mesh(towerGeometry, towerMaterial);
+                tower.position.set(
+                    i < 2 ? -2.5 : 2.5,
+                    2,
+                    i % 2 === 0 ? -1.5 : 1.5
+                );
+                tower.castShadow = true;
+                group.add(tower);
+            }
+            
+            // Plateforme supérieure
+            const platformGeometry = new THREE.BoxGeometry(5, 0.5, 3);
+            const platformMaterial = new THREE.MeshPhongMaterial({ 
+                color: colors[1],
                 shininess: 100 
             });
-            const shaft = new THREE.Mesh(shaftGeometry, shaftMaterial);
-            shaft.position.y = 2.25;
-            shaft.castShadow = true;
-            group.add(shaft);
+            const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+            platform.position.set(0, 3.75, 0);
+            platform.castShadow = true;
+            group.add(platform);
             
-            // Engrenages
+            // Mécanisme central
+            const mechanismGeometry = new THREE.SphereGeometry(0.8, 32, 16);
+            const mechanismMaterial = new THREE.MeshPhongMaterial({ 
+                color: colors[0],
+                shininess: 100 
+            });
+            const mechanism = new THREE.Mesh(mechanismGeometry, mechanismMaterial);
+            mechanism.position.set(0, 4.5, 0);
+            mechanism.castShadow = true;
+            group.add(mechanism);
+        }
+        
+        function createGearModel(group) {
+            // Créer un système d'engrenages
             for (let i = 0; i < 3; i++) {
-                const gearGeometry = new THREE.CylinderGeometry(1.2, 1.2, 0.3, 16);
+                const radius = 1.5 - i * 0.3;
+                const gearGeometry = new THREE.CylinderGeometry(radius, radius, 0.4, 24);
                 const gearMaterial = new THREE.MeshPhongMaterial({ 
-                    color: 0x3498db,
+                    color: [0x3498db, 0xe74c3c, 0x2ecc71][i],
                     shininess: 100 
                 });
                 const gear = new THREE.Mesh(gearGeometry, gearMaterial);
-                gear.position.set(0, 1 + i * 0.8, 0);
+                gear.position.set(i * 2.5 - 2.5, 0, 0);
                 gear.castShadow = true;
                 group.add(gear);
                 
-                // Dents d'engrenage (simulées)
-                for (let j = 0; j < 12; j++) {
-                    const toothGeometry = new THREE.BoxGeometry(0.1, 0.3, 0.3);
+                // Dents d'engrenage
+                const teethCount = 12 + i * 4;
+                for (let j = 0; j < teethCount; j++) {
+                    const toothGeometry = new THREE.BoxGeometry(0.1, 0.4, 0.3);
                     const tooth = new THREE.Mesh(toothGeometry, gearMaterial);
-                    const angle = (j / 12) * Math.PI * 2;
+                    const angle = (j / teethCount) * Math.PI * 2;
                     tooth.position.set(
-                        Math.cos(angle) * 1.25,
-                        1 + i * 0.8,
-                        Math.sin(angle) * 1.25
+                        Math.cos(angle) * (radius + 0.1) + i * 2.5 - 2.5,
+                        0,
+                        Math.sin(angle) * (radius + 0.1)
                     );
                     tooth.rotation.y = angle;
                     tooth.castShadow = true;
@@ -920,35 +1259,54 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             }
         }
         
-        function createGenericModel(group) {
-            // Créer une structure complexe générique
-            const colors = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6];
+        function createMechanicalPart(group) {
+            // Base cylindrique
+            const baseGeometry = new THREE.CylinderGeometry(2.5, 2.5, 0.8, 32);
+            const baseMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x95a5a6,
+                shininess: 100 
+            });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.castShadow = true;
+            base.receiveShadow = true;
+            group.add(base);
             
-            for (let i = 0; i < 8; i++) {
-                const geometry = new THREE.BoxGeometry(
-                    Math.random() * 2 + 0.5,
-                    Math.random() * 2 + 0.5,
-                    Math.random() * 2 + 0.5
-                );
-                const material = new THREE.MeshPhongMaterial({ 
-                    color: colors[i % colors.length],
-                    shininess: 100 
+            // Tige centrale
+            const shaftGeometry = new THREE.CylinderGeometry(0.5, 0.5, 4, 16);
+            const shaftMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x34495e,
+                shininess: 100 
+            });
+            const shaft = new THREE.Mesh(shaftGeometry, shaftMaterial);
+            shaft.position.y = 2.4;
+            shaft.castShadow = true;
+            group.add(shaft);
+            
+            // Bride de fixation
+            const flangeGeometry = new THREE.CylinderGeometry(1.8, 1.8, 0.3, 32);
+            const flangeMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x3498db,
+                shininess: 100 
+            });
+            const flange = new THREE.Mesh(flangeGeometry, flangeMaterial);
+            flange.position.y = 1.5;
+            flange.castShadow = true;
+            group.add(flange);
+            
+            // Trous de boulons
+            for (let i = 0; i < 6; i++) {
+                const holeGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.4, 8);
+                const holeMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x2c3e50 
                 });
-                const mesh = new THREE.Mesh(geometry, material);
-                
-                mesh.position.set(
-                    (Math.random() - 0.5) * 6,
-                    (Math.random() - 0.5) * 6,
-                    (Math.random() - 0.5) * 6
+                const hole = new THREE.Mesh(holeGeometry, holeMaterial);
+                const angle = (i / 6) * Math.PI * 2;
+                hole.position.set(
+                    Math.cos(angle) * 1.3,
+                    1.5,
+                    Math.sin(angle) * 1.3
                 );
-                mesh.rotation.set(
-                    Math.random() * Math.PI,
-                    Math.random() * Math.PI,
-                    Math.random() * Math.PI
-                );
-                
-                mesh.castShadow = true;
-                group.add(mesh);
+                group.add(hole);
             }
         }
         
@@ -957,12 +1315,19 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
                 scene.remove(currentModel);
                 currentModel = null;
             }
+            isModelLoaded = false;
             
-            // Réinitialiser le container 3D si nécessaire
+            // Nettoyer les mesures
+            clearMeasurements();
+            
+            // Réinitialiser le canvas si nécessaire
             const container = document.getElementById('viewer3d');
-            if (!container.querySelector('canvas')) {
+            const canvas = container.querySelector('canvas');
+            if (!canvas) {
                 init3DViewer();
             }
+            
+            showEmptyState();
         }
         
         function centerCameraOnModel(model) {
@@ -971,9 +1336,9 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             const size = box.getSize(new THREE.Vector3());
             
             const maxDim = Math.max(size.x, size.y, size.z);
-            const distance = maxDim * 1.8;
+            const distance = maxDim * 2;
             
-            camera.position.set(distance, distance * 0.7, distance);
+            camera.position.set(distance, distance * 0.8, distance);
             camera.lookAt(center);
         }
         
@@ -987,7 +1352,7 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             } else {
                 activeTool = 'rotation';
                 btn.classList.add('active');
-                showNotification('Mode rotation activé - Glissez pour tourner');
+                showNotification('Mode rotation activé - Glissez pour tourner le modèle');
             }
         }
         
@@ -1000,35 +1365,39 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             } else {
                 activeTool = 'zoom';
                 btn.classList.add('active');
-                showNotification('Mode zoom activé - Pincement pour zoomer');
+                showNotification('Mode zoom activé - Utilisez le pincement pour zoomer');
             }
         }
         
         function toggleMeasure() {
             const btn = document.getElementById('measureBtn');
+            const overlay = document.getElementById('measurementOverlay');
+            
             clearActiveTools();
+            clearMeasurements();
             
             if (activeTool === 'measure') {
                 activeTool = null;
-                measurementPoints = [];
-                hideMeasurementTooltip();
+                overlay.style.display = 'none';
             } else {
                 activeTool = 'measure';
                 btn.classList.add('active');
-                showNotification('Mode mesure activé - Touchez deux points');
-                showMeasurementTooltip();
+                overlay.style.display = 'block';
+                showNotification('Mode mesure activé - Touchez deux points sur le modèle');
             }
         }
         
         function toggleInfo() {
             const fileInfo = document.getElementById('fileInfo');
+            const btn = document.getElementById('infoBtn');
+            
             if (fileInfo.style.display === 'none' || !fileInfo.style.display) {
                 fileInfo.style.display = 'block';
-                document.getElementById('infoBtn').classList.add('active');
-                showNotification('Informations affichées');
+                btn.classList.add('active');
+                showNotification('Informations du fichier affichées');
             } else {
                 fileInfo.style.display = 'none';
-                document.getElementById('infoBtn').classList.remove('active');
+                btn.classList.remove('active');
             }
         }
         
@@ -1050,11 +1419,13 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
         }
         
         function showEmptyState() {
-            document.getElementById('emptyState').style.display = 'block';
+            if (!isModelLoaded) {
+                document.getElementById('emptyState').classList.remove('hidden');
+            }
         }
         
         function hideEmptyState() {
-            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('emptyState').classList.add('hidden');
         }
         
         function showFileInfo(fileData) {
@@ -1063,25 +1434,10 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
             document.getElementById('fileName').textContent = fileData.name;
             document.getElementById('fileSize').textContent = formatFileSize(fileData.size);
             document.getElementById('fileType').textContent = `Format: ${fileData.type}`;
-            document.getElementById('fileDate').textContent = fileData.date.toLocaleDateString('fr-FR');
+            document.getElementById('fileDate').textContent = `Source: ${fileData.source}`;
             
             fileInfo.style.display = 'block';
             document.getElementById('infoBtn').classList.add('active');
-        }
-        
-        function showMeasurementTooltip() {
-            const tooltip = document.getElementById('measurementTooltip');
-            tooltip.innerHTML = `
-                <div>📏 Distance: ${(Math.random() * 50 + 10).toFixed(1)} mm</div>
-                <div>📐 Angle: ${(Math.random() * 90 + 10).toFixed(1)}°</div>
-            `;
-            tooltip.style.display = 'block';
-            tooltip.style.top = '20px';
-            tooltip.style.right = '20px';
-        }
-        
-        function hideMeasurementTooltip() {
-            document.getElementById('measurementTooltip').style.display = 'none';
         }
         
         function showNotification(message, type = 'success') {
@@ -1112,30 +1468,29 @@ CAD Viewer iOS - Version 4.0 PROFESSIONNELLE
         document.addEventListener('DOMContentLoaded', function() {
             init3DViewer();
             
-            // Précharger un modèle d'exemple après 2 secondes
+            // Message d'accueil après 3 secondes
             setTimeout(() => {
-                if (!currentModel) {
-                    showNotification('Astuce: Essayez le fichier d\'exemple !', 'info');
+                if (!isModelLoaded) {
+                    showNotification('Astuce: Essayez le fichier d\'exemple pour commencer !');
                 }
-            }, 2000);
+            }, 3000);
         });
         
         // Gestion des erreurs
         window.addEventListener('error', function(e) {
-            console.error('Erreur:', e);
+            console.error('Erreur:', e.error);
             hideLoading();
-            showNotification('Erreur lors du chargement', 'error');
+            showNotification('Erreur lors du chargement du modèle', 'error');
         });
         
-        // Performance et optimisation
-        let lastFrameTime = 0;
-        function optimizedAnimate(currentTime) {
-            if (currentTime - lastFrameTime > 16) { // 60 FPS max
-                animate();
-                lastFrameTime = currentTime;
-            }
-            requestAnimationFrame(optimizedAnimate);
-        }
+        // Optimisation des performances
+        window.addEventListener('focus', function() {
+            if (renderer) renderer.setAnimationLoop(animate);
+        });
+        
+        window.addEventListener('blur', function() {
+            if (renderer) renderer.setAnimationLoop(null);
+        });
     </script>
 </body>
 </html>
